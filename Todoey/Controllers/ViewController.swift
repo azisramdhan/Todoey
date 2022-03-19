@@ -41,7 +41,9 @@ class ViewController: UITableViewController {
             return []
         }
     }()
-
+    
+    @IBOutlet private weak var searchBar: UISearchBar!
+    
     override func viewDidLoad() {
         super.viewDidLoad()
     }
@@ -141,3 +143,45 @@ class ViewController: UITableViewController {
 
 }
 
+extension ViewController: UISearchBarDelegate {
+    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
+        if searchBar.text!.isEmpty {
+            let request: NSFetchRequest<Task> = Task.fetchRequest()
+            do {
+                taskArray = try context.fetch(request)
+                tableView.reloadData()
+            } catch {
+                print(error)
+            }
+        } else {
+            let request: NSFetchRequest<Task> = Task.fetchRequest()
+            let predicate: NSPredicate = NSPredicate(format: "title CONTAINS %@", searchBar.text!)
+            request.predicate = predicate
+            let sortDescriptor = NSSortDescriptor(key: "title", ascending: true)
+            request.sortDescriptors = [sortDescriptor]
+            do {
+                taskArray = try context.fetch(request)
+                tableView.reloadData()
+            } catch {
+                print(error)
+            }
+        }
+
+        
+    }
+    
+    func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
+        if searchBar.text!.isEmpty {
+            let request: NSFetchRequest<Task> = Task.fetchRequest()
+            do {
+                taskArray = try context.fetch(request)
+                tableView.reloadData()
+            } catch {
+                print(error)
+            }
+            DispatchQueue.main.async {
+                searchBar.resignFirstResponder()
+            }
+        }
+    }
+}
