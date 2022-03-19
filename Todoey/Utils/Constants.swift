@@ -11,4 +11,7 @@ import Foundation
 extension String {
     static let itemCellIdentifier = "ToDoItemCell"
     static let itemListKey = "ToDoListArray"
+    static let categoryCellIdentifier = "CategoryCell"
+    static let categoryListKey = "CategoryListArray"
+    static let goToItemsKey = "goToItems"
 }

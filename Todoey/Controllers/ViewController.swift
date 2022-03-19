@@ -31,16 +31,39 @@ class ViewController: UITableViewController {
         }
     }()
     
-    lazy var taskArray: [Task] = {
+    var additionalPredicate: NSPredicate?
+    
+    var taskArray: [Task] = []
+    
+    func loadItems() {
         let request: NSFetchRequest<Task> = Task.fetchRequest()
+        let predicate: NSPredicate = NSPredicate(format: "parentCategory.name MATCHES %@", selectedCategory!.name!)
+        
+        let sortDescriptor = NSSortDescriptor(key: "title", ascending: true)
+        request.sortDescriptors = [sortDescriptor]
+        
+        if let additionalPredicate = additionalPredicate {
+            request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [predicate, additionalPredicate])
+            self.additionalPredicate = nil
+        } else {
+            request.predicate = predicate
+        }
+        
         do {
-            let array = try context.fetch(request)
-            return array
+            taskArray = try context.fetch(request)
         } catch {
             print(error)
-            return []
+            taskArray = []
         }
-    }()
+        
+        tableView.reloadData()
+    }
+    
+    var selectedCategory: Category? {
+        didSet {
+            loadItems()
+        }
+    }
     
     @IBOutlet private weak var searchBar: UISearchBar!
     
@@ -54,7 +77,7 @@ class ViewController: UITableViewController {
     
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         if section == 0 {
-            return itemArray.count
+            return 0
         } else {
             return taskArray.count
         }
@@ -120,6 +143,7 @@ class ViewController: UITableViewController {
             }
             let task = Task(context: self.context)
             task.title = text
+            task.parentCategory = self.selectedCategory
             self.taskArray.append(task)
             
             do {
@@ -146,25 +170,11 @@ class ViewController: UITableViewController {
 extension ViewController: UISearchBarDelegate {
     func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
         if searchBar.text!.isEmpty {
-            let request: NSFetchRequest<Task> = Task.fetchRequest()
-            do {
-                taskArray = try context.fetch(request)
-                tableView.reloadData()
-            } catch {
-                print(error)
-            }
+            additionalPredicate = nil
+            loadItems()
         } else {
-            let request: NSFetchRequest<Task> = Task.fetchRequest()
-            let predicate: NSPredicate = NSPredicate(format: "title CONTAINS %@", searchBar.text!)
-            request.predicate = predicate
-            let sortDescriptor = NSSortDescriptor(key: "title", ascending: true)
-            request.sortDescriptors = [sortDescriptor]
-            do {
-                taskArray = try context.fetch(request)
-                tableView.reloadData()
-            } catch {
-                print(error)
-            }
+            additionalPredicate = NSPredicate(format: "title CONTAINS %@", searchBar.text!)
+            loadItems()
         }
 
         
@@ -172,13 +182,8 @@ extension ViewController: UISearchBarDelegate {
     
     func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
         if searchBar.text!.isEmpty {
-            let request: NSFetchRequest<Task> = Task.fetchRequest()
-            do {
-                taskArray = try context.fetch(request)
-                tableView.reloadData()
-            } catch {
-                print(error)
-            }
+            additionalPredicate = nil
+            loadItems()
             DispatchQueue.main.async {
                 searchBar.resignFirstResponder()
             }
