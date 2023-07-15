@@ -7,27 +7,15 @@
 //
 
 import UIKit
-import CoreData
+import RealmSwift
 
 class CategoryViewController: UITableViewController {
     
-    let defaults: UserDefaults = UserDefaults.standard
-
-    lazy var context: NSManagedObjectContext = {
-        let delegate = UIApplication.shared.delegate as! AppDelegate
-        return delegate.persistentContainer.viewContext
-    }()
-    
-    lazy var categoryArray: [Category] = {
-        let request: NSFetchRequest<Category> = Category.fetchRequest()
-        do {
-            let array = try context.fetch(request)
-            return array
-        } catch {
-            print(error)
-            return []
-        }
-    }()
+    let realm = try! Realm()
+    var categories: Results<Category> {
+        let categories = realm.objects(Category.self)
+        return categories
+    }
     
     @IBOutlet private weak var searchBar: UISearchBar!
     
@@ -36,12 +24,12 @@ class CategoryViewController: UITableViewController {
     }
     
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return categoryArray.count
+        return categories.count
     }
     
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: .categoryCellIdentifier, for: indexPath)
-        cell.textLabel?.text = categoryArray[indexPath.row].name
+        cell.textLabel?.text = categories[indexPath.row].name
         return cell
     }
     
@@ -51,7 +39,7 @@ class CategoryViewController: UITableViewController {
     
     override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
         if let destination = segue.destination as? ViewController, let indexPath = tableView.indexPathForSelectedRow {
-            destination.selectedCategory = categoryArray[indexPath.row]
+            destination.selectedCategory = categories[indexPath.row]
         }
     }
     
@@ -60,18 +48,19 @@ class CategoryViewController: UITableViewController {
         
         let alert = UIAlertController(title: "Add New Category", message: "", preferredStyle: .alert)
         
-        let action = UIAlertAction(title: "Add Category", style: .default) {
-            action in
-            guard let text = alertTextField?.text else {
+        let action = UIAlertAction(title: "Add Category", style: .default) { [weak self] action in
+            guard let self,
+                  let text = alertTextField?.text else {
                 return
             }
-            let category = Category(context: self.context)
-            category.name = text
-            self.categoryArray.append(category)
-            
+            let category = Category()
+            category.name = text            
             do {
-                try self.context.save()
-                self.tableView.reloadData()
+                try self.realm.write { [weak self] in
+                    guard let self else { return }
+                    self.realm.add(category)
+                    self.tableView.reloadData()
+                }
             } catch {
                 print(error)
             }

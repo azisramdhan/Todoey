@@ -7,15 +7,11 @@
 //
 
 import UIKit
-import CoreData
+import RealmSwift
 
 class ViewController: UITableViewController {
+    let realm = try! Realm()
     let defaults: UserDefaults = UserDefaults.standard
-
-    lazy var context: NSManagedObjectContext = {
-        let delegate = UIApplication.shared.delegate as! AppDelegate
-        return delegate.persistentContainer.viewContext
-    }()
     
     lazy var itemArray: [Item] = {
         if let data = defaults.data(forKey: .itemListKey) {
@@ -31,31 +27,10 @@ class ViewController: UITableViewController {
         }
     }()
     
-    var additionalPredicate: NSPredicate?
-    
-    var taskArray: [Task] = []
+    var tasks: Results<Task>?
     
     func loadItems() {
-        let request: NSFetchRequest<Task> = Task.fetchRequest()
-        let predicate: NSPredicate = NSPredicate(format: "parentCategory.name MATCHES %@", selectedCategory!.name!)
-        
-        let sortDescriptor = NSSortDescriptor(key: "title", ascending: true)
-        request.sortDescriptors = [sortDescriptor]
-        
-        if let additionalPredicate = additionalPredicate {
-            request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [predicate, additionalPredicate])
-            self.additionalPredicate = nil
-        } else {
-            request.predicate = predicate
-        }
-        
-        do {
-            taskArray = try context.fetch(request)
-        } catch {
-            print(error)
-            taskArray = []
-        }
-        
+        tasks = selectedCategory?.tasks.sorted(byKeyPath: "dateCreated", ascending: true)
         tableView.reloadData()
     }
     
@@ -77,9 +52,9 @@ class ViewController: UITableViewController {
     
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         if section == 0 {
-            return 0
+            return itemArray.count
         } else {
-            return taskArray.count
+            return tasks?.count ?? .zero
         }
     }
     
@@ -91,8 +66,8 @@ class ViewController: UITableViewController {
             cell.accessoryType = itemArray[indexPath.row].done ? .checkmark : .none
         } else {
             cell.textLabel?.textAlignment = .right
-            cell.textLabel?.text = taskArray[indexPath.row].title
-            cell.accessoryType = taskArray[indexPath.row].done ? .checkmark : .none
+            cell.textLabel?.text = tasks?[indexPath.row].title
+            cell.accessoryType = tasks?[indexPath.row].done ?? false ? .checkmark : .none
         }
         return cell
     }
@@ -103,15 +78,18 @@ class ViewController: UITableViewController {
             tableView.deselectRow(at: indexPath, animated: true)
             tableView.reloadRows(at: [indexPath], with: .none)
         } else {
-            context.delete(taskArray[indexPath.row])
-            taskArray.remove(at: indexPath.row)
-            do {
-                try context.save()
-            } catch {
-                print(error)
+            if let task = tasks?[indexPath.row] {
+                do {
+                    try realm.write {
+                        task.done = !task.done
+                        // uncomment for delete action
+                        // realm.delete(task)
+                        tableView.reloadData()
+                    }
+                } catch {
+                    print(error)
+                }
             }
-            tableView.deselectRow(at: indexPath, animated: true)
-            tableView.reloadData()
         }
     }
     
@@ -141,14 +119,14 @@ class ViewController: UITableViewController {
             guard let text = alertTextField?.text else {
                 return
             }
-            let task = Task(context: self.context)
-            task.title = text
-            task.parentCategory = self.selectedCategory
-            self.taskArray.append(task)
-            
             do {
-                try self.context.save()
-                self.tableView.reloadData()
+                try self.realm.write {
+                    let task = Task()
+                    task.title = text
+                    task.dateCreated = Date()
+                    self.selectedCategory?.tasks.append(task)
+                    self.tableView.reloadData()
+                }
             } catch {
                 print(error)
             }
@@ -170,11 +148,11 @@ class ViewController: UITableViewController {
 extension ViewController: UISearchBarDelegate {
     func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
         if searchBar.text!.isEmpty {
-            additionalPredicate = nil
             loadItems()
         } else {
-            additionalPredicate = NSPredicate(format: "title CONTAINS %@", searchBar.text!)
-            loadItems()
+            // https://academy.realm.io/posts/nspredicate-cheatsheet/
+            tasks = tasks?.filter("title CONTAINS[cd] %@", searchBar.text!).sorted(byKeyPath: "dateCreated", ascending: true)
+            tableView.reloadData()
         }
 
         
@@ -182,7 +160,6 @@ extension ViewController: UISearchBarDelegate {
     
     func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
         if searchBar.text!.isEmpty {
-            additionalPredicate = nil
             loadItems()
             DispatchQueue.main.async {
                 searchBar.resignFirstResponder()
